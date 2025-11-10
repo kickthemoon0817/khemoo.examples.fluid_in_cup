@@ -1,6 +1,7 @@
 """
 Small SimulationApp example that enables the `khemoo.examples.fluid_in_cup` extension, runs the simulation for a few
-seconds, and logs how much fluid remains inside the mug.
+seconds, and logs how much fluid remains inside the mug. Use `FLUID_CUP_DYNAMIC=1` to let the cup fall as a rigid body,
+and set `FLUID_CUP_COLOR=r,g,b` (0-1 floats) to tweak the OmniGlass tint.
 """
 
 from isaacsim import SimulationApp
@@ -52,7 +53,6 @@ def _ensure_world(stage):
 
 def _setup_environment(stage):
     _ensure_world(stage)
-    _ensure_physics_scene(stage)
     if not stage.GetPrimAtPath("/World/GroundPlane"):
         physicsUtils.add_ground_plane(
             stage,
@@ -70,12 +70,26 @@ def _setup_environment(stage):
         key_light.AddOrientOp().Set(Gf.Quatf(0.9239, -0.3827, 0.0, 0.0))
 
 
-def _ensure_physics_scene(stage):
-    if stage.GetPrimAtPath("/World/PhysicsScene"):
-        return
-    scene = UsdPhysics.Scene.Define(stage, "/World/PhysicsScene")
-    scene.CreateGravityDirectionAttr().Set(Gf.Vec3f(0.0, 0.0, -1.0))
-    scene.CreateGravityMagnitudeAttr().Set(981.0)
+def _get_bool_env(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _get_color_env(name: str):
+    raw = os.getenv(name)
+    if not raw:
+        return None
+    try:
+        parts = [float(p.strip()) for p in raw.split(",")]
+    except ValueError:
+        carb.log_warn(f"[FluidCupExample] Failed to parse {name}={raw!r}; expecting comma-separated floats")
+        return None
+    if len(parts) != 3:
+        carb.log_warn(f"[FluidCupExample] {name} expects exactly 3 floats, got {len(parts)}")
+        return None
+    return tuple(max(0.0, min(1.0, v)) for v in parts)
 
 
 def _print_fluid_status(fluid_cup, frame):
@@ -93,10 +107,20 @@ def main():
     _enable_extension()
     stage = _get_stage()
     _setup_environment(stage)
+    cup_overrides = {}
+    if _get_bool_env("FLUID_CUP_DYNAMIC", False):
+        cup_overrides.update({"enable_rigid_body": True, "disable_gravity": False, "mass": 0.5})
+        carb.log_info("[FluidCupExample] Dynamic cup enabled via FLUID_CUP_DYNAMIC")
+    glass_color = _get_color_env("FLUID_CUP_COLOR")
+    if glass_color:
+        cup_overrides["glass_color"] = glass_color
+        carb.log_info(f"[FluidCupExample] Using custom glass color {glass_color}")
+
     fluid_cup = FluidCup(
         stage,
         root_prim_path="/World/FluidCupDemo",
         auto_generate=True,
+        cup_overrides=cup_overrides or None,
     )
     timeline = omni.timeline.get_timeline_interface()
     if timeline.is_stopped():

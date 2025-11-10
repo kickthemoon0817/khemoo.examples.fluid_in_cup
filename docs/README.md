@@ -37,7 +37,9 @@ remain inside the cup walls and exposes the data through `get_fluid_status()` an
 To drive this extension from a standalone Python process, run
 `python extsUser/khemoo.examples.fluid_in_cup/khemoo/examples/fluid_in_cup/examples/fluid_cup_simulation_app.py`. The
 script bootstraps `SimulationApp`, ensures the extension is enabled, and prints the remaining fluid percentage while the
-simulation runs for a short session.
+simulation runs for a short session. You can make the cup a dynamic rigid body with
+`FLUID_CUP_DYNAMIC=1 python ...`, or tint the OmniGlass shader via
+`FLUID_CUP_COLOR="0.7,0.9,1.0" python ...`.
 
 ## Procedural cup configuration
 

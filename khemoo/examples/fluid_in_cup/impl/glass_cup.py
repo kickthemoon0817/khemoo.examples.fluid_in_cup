@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple
 
 import carb
 import numpy as np
-from pxr import Gf, PhysxSchema, UsdGeom, UsdPhysics, UsdShade
+from pxr import Gf, PhysxSchema, Sdf, UsdGeom, UsdPhysics, UsdShade
 
 DEFAULT_GLASS_CUP_CONFIG: Dict[str, float] = {
     "base_radius": 0.06,
@@ -198,7 +198,8 @@ def _apply_omniglass_material(stage, root_prim, config: Dict[str, float]) -> Non
         glass.set_depth(float(glass_depth))
     glass_thin = config.get("glass_thin_walled")
     if isinstance(glass_thin, bool):
-        glass.set_thin_walled(glass_thin)
+        shader = glass.shaders_list[0]
+        shader.CreateInput("thin_walled", Sdf.ValueTypeNames.Bool).Set(glass_thin)
     UsdShade.MaterialBindingAPI(root_prim).Bind(glass.material)
 
 

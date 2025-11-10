@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 
 import carb
 from omni.physx.scripts import particleUtils, physicsUtils, utils as physx_utils
@@ -35,6 +35,7 @@ class FluidCup:
         assets_root_url: Optional[str] = None,
         root_prim_path: str = "/World/FluidCup",
         auto_generate: bool = False,
+        cup_overrides: Optional[Dict[str, float]] = None,
     ) -> None:
         self._stage = stage
         self._root_prim_path = Sdf.Path(root_prim_path)
@@ -43,6 +44,7 @@ class FluidCup:
         self._particle_set_path = self._root_prim_path.AppendChild("Fluid")
         self._particle_material_path = self._root_prim_path.AppendChild("ParticleMaterial")
         self._assets_root_url = assets_root_url
+        self._cup_overrides = dict(cup_overrides) if cup_overrides else {}
 
         # Cup dimensions (meters) aligning with the procedural glass cup
         self._cup_inner_radius = DEFAULT_GLASS_CUP_CONFIG["base_radius"] - DEFAULT_GLASS_CUP_CONFIG["wall_thickness"]
@@ -84,16 +86,18 @@ class FluidCup:
     def _spawn_cup(self) -> None:
         cup_path = str(self._cup_prim_path)
         carb.log_info(f"FluidCup: generating procedural glass cup at {cup_path}")
+        base_overrides = {
+            "enable_rigid_body": True,
+            "disable_gravity": False,
+            "mass": 0.5,
+            "glass_color": (0.9, 0.95, 1.0),
+        }
+        base_overrides.update(self._cup_overrides)
         create_glass_cup(
             self._stage,
             cup_path,
             position=(0.0, 0.0, 0.0),
-            overrides={
-                "enable_rigid_body": True,
-                "disable_gravity": True,
-                "mass": 0.5,
-                "glass_color": (0.9, 0.95, 1.0),
-            },
+            overrides=base_overrides,
         )
 
     def _create_particle_system(self) -> None:
