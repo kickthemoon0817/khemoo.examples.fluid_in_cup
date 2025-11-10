@@ -1,0 +1,19 @@
+[package]
+version = "0.1.0"
+category = "simulation"
+title = "Fluid In Cup Example"
+description = "Loads a glass cup asset and fills it with a PhysX fluid block."
+authors = ["khemoo"]
+repository = ""
+keywords = ["isaac", "physx", "fluid", "particles"]
+readme = "docs/README.md"
+writeTarget.kit = true
+
+[dependencies]
+"omni.kit.uiapp" = {}
+"omni.timeline" = {}
+"omni.usd" = {}
+"omni.physx" = {}
+
+[[python.module]]
+name = "khemoo.examples.fluid_in_cup"
