@@ -65,6 +65,8 @@ class FluidCup:
 
         self._initial_particle_count = 0
         self._generated = False
+        self._cup_prim: Optional[Usd.Prim] = None
+        self._cup_xformable: Optional[UsdGeom.Xformable] = None
 
         if auto_generate:
             self.generate()
@@ -99,6 +101,16 @@ class FluidCup:
             position=(0.0, 0.0, 0.0),
             overrides=base_overrides,
         )
+        self._refresh_cup_handles()
+
+    def _refresh_cup_handles(self) -> None:
+        prim = self._stage.GetPrimAtPath(self._cup_prim_path)
+        if prim and prim.IsValid():
+            self._cup_prim = prim
+            self._cup_xformable = UsdGeom.Xformable(prim)
+        else:
+            self._cup_prim = None
+            self._cup_xformable = None
 
     def _create_particle_system(self) -> None:
         particleUtils.add_physx_particle_system(
@@ -205,10 +217,12 @@ class FluidCup:
         particle_set = PhysxSchema.PhysxParticleSetAPI(prim)
         sim_points_attr = particle_set.GetSimulationPointsAttr()
         if sim_points_attr and sim_points_attr.HasAuthoredValue():
+            # Intended to prefer simulation points when available
             points = sim_points_attr.Get()
             if points:
                 return points
 
+        # Fallback to manual inspection of prim(almost not needed)
         instancer = UsdGeom.PointInstancer(prim)
         if instancer:
             points = instancer.GetPositionsAttr().Get()
@@ -221,12 +235,25 @@ class FluidCup:
                 return points
         return []
 
+    def _get_cup_xformable(self) -> Optional[UsdGeom.Xformable]:
+        if self._cup_xformable and self._cup_xformable.GetPrim().IsValid():
+            return self._cup_xformable
+
+        if not self._cup_prim or not self._cup_prim.IsValid():
+            prim = self._stage.GetPrimAtPath(self._cup_prim_path)
+            if not prim or not prim.IsValid():
+                self._cup_prim = None
+                self._cup_xformable = None
+                return None
+
+            self._cup_prim = prim
+
+        self._cup_xformable = UsdGeom.Xformable(self._cup_prim)
+        return self._cup_xformable
+
     def _get_world_to_cup_transform(self) -> Optional[Gf.Matrix4d]:
         """Return the matrix that converts world coordinates into the cup's local space."""
-        prim = self._stage.GetPrimAtPath(self._cup_prim_path)
-        if not prim:
-            return None
-        xformable = UsdGeom.Xformable(prim)
+        xformable = self._get_cup_xformable()
         if not xformable:
             return None
         cup_to_world = xformable.ComputeLocalToWorldTransform(Usd.TimeCode.Default())
