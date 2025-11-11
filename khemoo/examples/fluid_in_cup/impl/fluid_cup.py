@@ -221,14 +221,30 @@ class FluidCup:
                 return points
         return []
 
-    def _is_inside_cup(self, point: Gf.Vec3f) -> bool:
-        radial_sq = point[0] * point[0] + point[1] * point[1]
+    def _get_world_to_cup_transform(self) -> Optional[Gf.Matrix4d]:
+        """Return the matrix that converts world coordinates into the cup's local space."""
+        prim = self._stage.GetPrimAtPath(self._cup_prim_path)
+        if not prim:
+            return None
+        xformable = UsdGeom.Xformable(prim)
+        if not xformable:
+            return None
+        cup_to_world = xformable.ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+        return cup_to_world.GetInverse()
+
+    def _is_inside_cup(self, point: Gf.Vec3f, *, world_to_cup: Optional[Gf.Matrix4d] = None) -> bool:
+        local_point = point
+        if world_to_cup is not None:
+            transformed = world_to_cup.Transform(Gf.Vec3d(point[0], point[1], point[2]))
+            local_point = Gf.Vec3f(transformed[0], transformed[1], transformed[2])
+
+        radial_sq = local_point[0] * local_point[0] + local_point[1] * local_point[1]
         radius_limit = (self._cup_inner_radius - self._fluid_margin) ** 2
         height_min = self._cup_floor_height - self._fluid_margin
         height_max = self._cup_floor_height + self._cup_interior_height + self._fluid_margin
         if radial_sq > radius_limit:
             return False
-        return height_min <= point[2] <= height_max
+        return height_min <= local_point[2] <= height_max
 
     def get_fluid_status(self) -> FluidStatus:
         """Return how much fluid is still inside the cup."""
@@ -236,7 +252,8 @@ class FluidCup:
         if not positions or not self._initial_particle_count:
             return FluidStatus(0, self._initial_particle_count, 0.0)
 
-        inside = sum(1 for pos in positions if self._is_inside_cup(pos))
+        world_to_cup = self._get_world_to_cup_transform()
+        inside = sum(1 for pos in positions if self._is_inside_cup(pos, world_to_cup=world_to_cup))
         fraction = inside / self._initial_particle_count if self._initial_particle_count else 0.0
         return FluidStatus(inside, self._initial_particle_count, fraction)
 

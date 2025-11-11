@@ -97,6 +97,10 @@ def _print_fluid_status(fluid_cup, frame):
         return
     status = fluid_cup.get_fluid_status()
     fraction = status.fraction * 100.0
+    print(
+        f"[FluidCupExample] frame={frame:04d} "
+        f"in_cup={status.particles_in_cup}/{status.initial_particles} ({fraction:.2f}%)"
+    )
     carb.log_info(
         f"[FluidCupExample] frame={frame:04d} "
         f"in_cup={status.particles_in_cup}/{status.initial_particles} ({fraction:.2f}%)"
