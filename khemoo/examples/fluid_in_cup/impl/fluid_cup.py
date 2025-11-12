@@ -3,8 +3,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence
 
 import carb
-from omni.physx.scripts import particleUtils, physicsUtils, utils as physx_utils
-from pxr import Gf, PhysxSchema, Sdf, Usd, UsdGeom, UsdPhysics, Vt
+from omni.physx.scripts import particleUtils, physicsUtils
+from pxr import Gf, PhysxSchema, Sdf, Usd, UsdGeom, Vt
 
 from .glass_cup import DEFAULT_GLASS_CUP_CONFIG, create_glass_cup
 
@@ -68,12 +68,14 @@ class FluidCup:
         self._cup_prim: Optional[Usd.Prim] = None
         self._cup_xformable: Optional[UsdGeom.Xformable] = None
 
-        if auto_generate:
+        self._sync_existing_setup()
+
+        if auto_generate and not self._generated:
             self.generate()
 
     @property
     def particle_count(self) -> int:
-        return self._initial_particle_count
+        return self._ensure_initial_particle_count()
 
     def generate(self) -> "FluidCup":
         """Create (or recreate) the fluid cup prim hierarchy on the stage."""
@@ -84,6 +86,10 @@ class FluidCup:
         self._fill_fluid()
         self._generated = True
         return self
+
+    def capture_initial_state(self, *, force: bool = False) -> int:
+        """Record the current particle count as the initial baseline."""
+        return self._ensure_initial_particle_count(force=force)
 
     def _spawn_cup(self) -> None:
         cup_path = str(self._cup_prim_path)
@@ -126,7 +132,7 @@ class FluidCup:
             max_neighborhood=96,
         )
         particleUtils.add_physx_particle_smoothing(self._stage, self._particle_system_path, strength=1.0)
-        particleUtils.add_physx_particle_anisotropy(self._stage, self._particle_system_path, scale=1.0)
+        particleUtils.add_physx_particle_anisotropy(self._stage, self._particle_system_path, scale=1.0, min=0.0, max=1.0)
         particleUtils.add_pbd_particle_material(
             self._stage,
             self._particle_material_path,
@@ -209,6 +215,42 @@ class FluidCup:
         if len(proto_indices) != len(positions):
             instancer.GetProtoIndicesAttr().Set([0] * len(positions))
 
+    def _sync_existing_setup(self) -> None:
+        """Inspect the stage and reuse any pre-existing cup or particle prims."""
+        root_prim = self._stage.GetPrimAtPath(self._root_prim_path)
+        if not root_prim or not root_prim.IsValid():
+            return
+
+        self._refresh_cup_handles()
+
+        particle_system_prim = self._stage.GetPrimAtPath(self._particle_system_path)
+        particle_set_prim = self._stage.GetPrimAtPath(self._particle_set_path)
+
+        has_cup = bool(self._cup_prim and self._cup_prim.IsValid())
+        has_system = bool(particle_system_prim and particle_system_prim.IsValid())
+        has_particles = bool(particle_set_prim and particle_set_prim.IsValid())
+
+        if has_particles:
+            self._ensure_initial_particle_count()
+
+        self._generated = has_cup or has_system or has_particles
+
+    def _ensure_initial_particle_count(
+        self,
+        *,
+        force: bool = False,
+        positions: Optional[Sequence[Gf.Vec3f]] = None,
+    ) -> int:
+        """Ensure the cached initial particle count reflects the stage state."""
+        if not force and self._initial_particle_count:
+            return self._initial_particle_count
+
+        if positions is None:
+            positions = self._get_current_particle_positions()
+
+        self._initial_particle_count = len(positions) if positions else 0
+        return self._initial_particle_count
+
     def _get_current_particle_positions(self) -> Sequence[Gf.Vec3f]:
         prim = self._stage.GetPrimAtPath(self._particle_set_path)
         if not prim:
@@ -276,13 +318,17 @@ class FluidCup:
     def get_fluid_status(self) -> FluidStatus:
         """Return how much fluid is still inside the cup."""
         positions = self._get_current_particle_positions()
-        if not positions or not self._initial_particle_count:
+        if not positions:
             return FluidStatus(0, self._initial_particle_count, 0.0)
+
+        initial_count = self._ensure_initial_particle_count(positions=positions)
+        if not initial_count:
+            return FluidStatus(0, initial_count, 0.0)
 
         world_to_cup = self._get_world_to_cup_transform()
         inside = sum(1 for pos in positions if self._is_inside_cup(pos, world_to_cup=world_to_cup))
-        fraction = inside / self._initial_particle_count if self._initial_particle_count else 0.0
-        return FluidStatus(inside, self._initial_particle_count, fraction)
+        fraction = inside / initial_count if initial_count else 0.0
+        return FluidStatus(inside, initial_count, fraction)
 
     def get_remaining_fraction(self) -> float:
         """Convenience wrapper returning only the fraction."""
